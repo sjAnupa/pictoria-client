@@ -13,7 +13,7 @@ jobs:
       SERVER_USER: ${{ secrets.SERVER_USER || vars.SERVER_USER || secrets.VPS_USER || vars.VPS_USER }}
       SERVER_IP: ${{ secrets.SERVER_IP || vars.SERVER_IP || secrets.VPS_HOST || vars.VPS_HOST }}
       SSH_PORT: ${{ secrets.SSH_PORT || vars.SSH_PORT || secrets.VPS_PORT || vars.VPS_PORT || '22' }}
-      REMOTE_PATH: ${{ secrets.REMOTE_PATH || vars.REMOTE_PATH || '/www/wwwroot/pictoriya.com' }}
+      REMOTE_PATH: ${{ secrets.REMOTE_PATH || vars.REMOTE_PATH }}
 
     steps:
       - name: Checkout code
@@ -33,7 +33,7 @@ jobs:
       - name: Build production React application
         env:
           CI: false
-          VITE_API_URL: ${{ secrets.VITE_API_URL || vars.VITE_API_URL || 'https://api.pictoriya.com/api' }}
+          VITE_API_URL: ${{ secrets.VITE_API_URL || vars.VITE_API_URL }}
           VITE_GOOGLE_CLIENT_ID: ${{ secrets.VITE_GOOGLE_CLIENT_ID || vars.VITE_GOOGLE_CLIENT_ID }}
           VITE_R2_PUBLIC_URL: ${{ secrets.VITE_R2_PUBLIC_URL || vars.VITE_R2_PUBLIC_URL }}
         run: npm run build
@@ -53,6 +53,10 @@ jobs:
           fi
           if [ -z "$SSH_PRIVATE_KEY" ]; then
             echo "Error: SSH_PRIVATE_KEY (or VPS_SSH_KEY) is missing in GitHub Repository Secrets." >&2
+            exit 1
+          fi
+          if [ -z "$REMOTE_PATH" ]; then
+            echo "Error: REMOTE_PATH is missing in GitHub Repository Secrets or Variables." >&2
             exit 1
           fi
           mkdir -p ~/.ssh

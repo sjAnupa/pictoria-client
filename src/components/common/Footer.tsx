@@ -66,7 +66,7 @@ const Footer = () => {
 
       <div className="page-gutter flex flex-col flex-wrap items-center justify-between gap-3 border-t border-[#E8C98A]/20 pt-6 sm:flex-row">
         <div className="text-xs text-[#6B4226]">
-          © {new Date().getFullYear()} Pictoriya. Made with care for readers everywhere.
+          © {new Date().getFullYear()} | Pictoriya. Made with care for readers everywhere |.
         </div>
         <div className="flex flex-wrap justify-center gap-4">
           {legalLinks.map(({ label, to }) => (
