@@ -22,7 +22,7 @@ jobs:
 
       # 1. Install dependencies
       - name: Install dependencies
-        run: npm install --legacy-peer-deps
+        run: npm install
 
       # 2. Build production React application (CI=false prevents warnings from failing the build)
       - name: Build production React application
