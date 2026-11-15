@@ -178,7 +178,19 @@ export default function AuthScreen({
               )}
             </div>
 
-            <p className="mt-8 text-center text-sm text-[#6B4226]">
+            <p className="mt-5 text-center text-[12px] leading-relaxed text-[#9B6B4A]">
+              By continuing, you agree to our{' '}
+              <Link to="/terms" className="font-semibold text-[#6B4226] no-underline hover:underline">
+                Terms of Service
+              </Link>{' '}
+              and{' '}
+              <Link to="/privacy" className="font-semibold text-[#6B4226] no-underline hover:underline">
+                Privacy Policy
+              </Link>
+              .
+            </p>
+
+            <p className="mt-6 text-center text-sm text-[#6B4226]">
               {c.switchPrompt}{' '}
               <Link
                 to={c.switchTo}
