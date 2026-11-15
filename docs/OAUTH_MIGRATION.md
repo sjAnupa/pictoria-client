@@ -78,7 +78,11 @@ db.users.updateOne(
 - [ ] Set `VITE_GOOGLE_CLIENT_ID` in client build env
 - [ ] Set `GOOGLE_CLIENT_ID` (+ secret if needed) on server
 - [ ] Add production origin to **Authorized JavaScript origins**
-- [ ] Add privacy policy + terms URLs on consent screen
+- [ ] Deploy live pages: `/privacy` and `/terms` (footer + login already link them)
+- [ ] Add those URLs on the OAuth consent screen (App domain):
+  - Privacy: `https://<your-production-domain>/privacy`
+  - Terms: `https://<your-production-domain>/terms`
+- [ ] Add production origin under **Authorized JavaScript origins**
 - [ ] Move OAuth app from **Testing** → **In production** when ready for all users
 - [ ] Run `seed:cleanup-users` on prod only if clearing test accounts (backup DB first)
 
