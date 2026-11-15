@@ -5,6 +5,7 @@ const exploreLinks = [
   { label: 'Featured reads', to: '/#featured-reads' },
   { label: 'New arrivals', to: '/#new-arrivals' },
   { label: 'Browse catalog', to: '/library' },
+  { label: 'About us', to: '/about' },
 ] as const
 
 const legalLinks = [

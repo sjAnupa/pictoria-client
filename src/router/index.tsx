@@ -13,6 +13,7 @@ import Reader from '../pages/Reader'
 import Register from '../pages/Register'
 import AccountPage from '../pages/account/AccountPage'
 import LibraryPage from '../pages/library/LibraryPage'
+import AboutPage from '../pages/AboutPage'
 import CookiesPage from '../pages/legal/CookiesPage'
 import PrivacyPage from '../pages/legal/PrivacyPage'
 import TermsPage from '../pages/legal/TermsPage'
@@ -50,6 +51,7 @@ export const router = createBrowserRouter([
           { path: 'library', element: <LibraryPage /> },
           { path: 'books/:slug', element: <BookDetail /> },
           { path: 'read/:bookId/chapter/:chapterNumber', element: <Reader /> },
+          { path: 'about', element: <AboutPage /> },
           { path: 'privacy', element: <PrivacyPage /> },
           { path: 'terms', element: <TermsPage /> },
           { path: 'cookies', element: <CookiesPage /> },
