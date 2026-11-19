@@ -1,6 +1,7 @@
+import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Globe, ArrowLeft, type LucideIcon } from 'lucide-react'
-import type { CSSProperties, ReactNode } from 'react'
+import { Globe, ArrowLeft, ChevronDown, LogOut, type LucideIcon } from 'lucide-react'
+import type { CSSProperties, MouseEvent as ReactMouseEvent, ReactNode } from 'react'
 import { ADMIN_FONT, adminTheme } from './adminTheme'
 
 const FONT = ADMIN_FONT
@@ -208,60 +209,175 @@ export function AdminBackButton({ label, onClick }: { label: string; onClick: ()
   )
 }
 
+const menuItemStyle: CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 10,
+  width: '100%',
+  padding: '9px 12px',
+  border: 'none',
+  borderRadius: 8,
+  background: 'transparent',
+  cursor: 'pointer',
+  fontSize: 13,
+  fontWeight: 600,
+  color: '#3D2314',
+  fontFamily: FONT,
+  textAlign: 'left',
+  textDecoration: 'none',
+}
+
 export function AdminUserChip({
   name,
   role,
+  email,
+  onLogout,
 }: {
   name: string
   role: string
+  email?: string
+  onLogout: () => void
 }) {
   const initial = name.charAt(0).toUpperCase()
+  const [open, setOpen] = useState(false)
+  const rootRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const onPointerDown = (event: MouseEvent) => {
+      if (rootRef.current && !rootRef.current.contains(event.target as Node)) setOpen(false)
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false)
+    }
+    document.addEventListener('mousedown', onPointerDown)
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown)
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [open])
+
+  const hover = (e: ReactMouseEvent<HTMLElement>, on: boolean) => {
+    e.currentTarget.style.background = on ? 'rgba(245,217,160,0.55)' : 'transparent'
+  }
+
   return (
-    <div
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 10,
-        padding: '6px 10px 6px 6px',
-        borderRadius: 999,
-        border: '1px solid #E5E7EB',
-        background: '#F9FAFB',
-      }}
-    >
-      <div
+    <div ref={rootRef} style={{ position: 'relative' }}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label="Account menu"
         style={{
-          width: 32,
-          height: 32,
-          borderRadius: '50%',
-          background: `linear-gradient(135deg, ${adminTheme.primary}, ${adminTheme.accent})`,
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'center',
-          color: '#fff',
-          fontSize: 12,
-          fontWeight: 700,
-          flexShrink: 0,
+          gap: 10,
+          padding: '6px 10px 6px 6px',
+          borderRadius: 999,
+          border: `1px solid ${open ? '#C9952A' : '#E5E7EB'}`,
+          background: '#F9FAFB',
+          cursor: 'pointer',
+          fontFamily: FONT,
         }}
       >
-        {initial}
-      </div>
-      <div style={{ minWidth: 0 }}>
         <div
           style={{
+            width: 32,
+            height: 32,
+            borderRadius: '50%',
+            background: `linear-gradient(135deg, ${adminTheme.primary}, ${adminTheme.accent})`,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: '#fff',
             fontSize: 12,
-            fontWeight: 600,
-            color: '#374151',
-            lineHeight: 1.2,
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-            maxWidth: 140,
+            fontWeight: 700,
+            flexShrink: 0,
           }}
         >
-          {name}
+          {initial}
         </div>
-        <div style={{ fontSize: 10, color: '#9CA3AF', marginTop: 1 }}>{role}</div>
-      </div>
+        <div style={{ minWidth: 0, textAlign: 'left' }}>
+          <div
+            style={{
+              fontSize: 12,
+              fontWeight: 600,
+              color: '#374151',
+              lineHeight: 1.2,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+              maxWidth: 140,
+            }}
+          >
+            {name}
+          </div>
+          <div style={{ fontSize: 10, color: '#9CA3AF', marginTop: 1 }}>{role}</div>
+        </div>
+        <ChevronDown
+          size={14}
+          color="#9CA3AF"
+          aria-hidden
+          style={{ transition: 'transform 0.15s', transform: open ? 'rotate(180deg)' : 'none' }}
+        />
+      </button>
+
+      {open ? (
+        <div
+          role="menu"
+          style={{
+            position: 'absolute',
+            right: 0,
+            top: 'calc(100% + 8px)',
+            zIndex: 200,
+            minWidth: 220,
+            padding: 6,
+            borderRadius: 12,
+            border: '1px solid #E8C98A',
+            background: '#FEF8EE',
+            boxShadow: '0 12px 40px rgba(90,40,10,0.14)',
+            fontFamily: FONT,
+          }}
+        >
+          <div style={{ padding: '6px 12px 10px', borderBottom: '1px solid rgba(232,201,138,0.7)', marginBottom: 4 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#3D2314', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {name}
+            </div>
+            {email ? (
+              <div style={{ fontSize: 11, color: '#9B6B4A', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {email}
+              </div>
+            ) : null}
+          </div>
+          <Link
+            role="menuitem"
+            to="/"
+            onClick={() => setOpen(false)}
+            style={menuItemStyle}
+            onMouseEnter={(e) => hover(e, true)}
+            onMouseLeave={(e) => hover(e, false)}
+          >
+            <Globe size={15} color="#6B4226" aria-hidden />
+            View public site
+          </Link>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              setOpen(false)
+              onLogout()
+            }}
+            style={menuItemStyle}
+            onMouseEnter={(e) => hover(e, true)}
+            onMouseLeave={(e) => hover(e, false)}
+          >
+            <LogOut size={15} color="#6B4226" aria-hidden />
+            Log out
+          </button>
+        </div>
+      ) : null}
     </div>
   )
 }
