@@ -162,14 +162,15 @@ export async function createAdminChapter(
   title: string,
   manifest: PageManifestEntry[],
   pageFiles: File[],
-): Promise<void> {
+): Promise<string> {
   const fd = new FormData()
   fd.append('bookId', bookId)
   fd.append('chapterNumber', String(chapterNumber))
   fd.append('title', title.trim())
   fd.append('pageManifest', JSON.stringify(manifest))
   pageFiles.forEach((file) => fd.append('pages', file))
-  await api.post('/chapters', fd)
+  const { data } = await api.post<ApiSuccess<{ _id: string }>>('/chapters', fd)
+  return String(data.data._id)
 }
 
 export async function updateAdminChapter(
@@ -260,11 +261,30 @@ export async function deleteAdminBook(bookId: string): Promise<void> {
   await api.delete(`/books/${bookId}`)
 }
 
+/**
+ * True when the server does not know the batch page-upload route at all
+ * (older API build behind a newer client). A real "Book not found" 404 carries
+ * the JSON error envelope, a missing route does not.
+ */
+export function isUploadEndpointMissing(err: unknown): boolean {
+  if (!axios.isAxiosError(err) || err.response?.status !== 404) return false
+  const body = err.response.data as { success?: unknown } | undefined
+  return typeof body !== 'object' || body === null || typeof body.success !== 'boolean'
+}
+
 export function adminBookErrorMessage(err: unknown, fallback: string): string {
   if (axios.isAxiosError(err)) {
     const body = err.response?.data as { message?: string; errors?: string[] } | undefined
     if (body?.errors?.length) return body.errors.join('. ')
     if (body?.message) return body.message
+    if (!err.response) {
+      return err.code === 'ECONNABORTED'
+        ? 'The server took too long to respond. Check your connection and try again.'
+        : 'Could not reach the server. Check your connection and try again.'
+    }
+    if (err.response.status === 404) return 'The server does not support this action yet. Please try again shortly.'
+    if (err.response.status === 413) return 'The upload is too large. Try fewer or smaller images.'
+    if (err.response.status >= 500) return 'The server had a problem. Please try again in a moment.'
   }
   return fallback
 }
