@@ -27,18 +27,22 @@ export async function fetchBookEngagement(bookId: string): Promise<BookEngagemen
   }
 }
 
-export async function toggleBookLike(bookId: string): Promise<BookEngagementState> {
+export async function setBookLike(bookId: string, liked: boolean): Promise<BookEngagementState> {
   try {
-    const { data } = await api.put<ApiSuccess<BookEngagementState>>(`/engagement/book/${bookId}/like`)
+    const { data } = await api.put<ApiSuccess<BookEngagementState>>(`/engagement/book/${bookId}/like`, {
+      liked,
+    })
     return data.data
   } catch (err) {
     throw new EngagementServiceError(messageFromError(err, 'Failed to update like.'))
   }
 }
 
-export async function toggleSavedBook(bookId: string): Promise<BookEngagementState> {
+export async function setSavedBook(bookId: string, saved: boolean): Promise<BookEngagementState> {
   try {
-    const { data } = await api.put<ApiSuccess<BookEngagementState>>(`/engagement/book/${bookId}/save`)
+    const { data } = await api.put<ApiSuccess<BookEngagementState>>(`/engagement/book/${bookId}/save`, {
+      saved,
+    })
     return data.data
   } catch (err) {
     throw new EngagementServiceError(messageFromError(err, 'Failed to update save.'))
