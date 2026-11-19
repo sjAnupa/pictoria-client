@@ -1,8 +1,14 @@
 import { useState, type ReactNode } from "react";
-import { Navigate } from "react-router-dom";
+import { Navigate, useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { AdminButton, AdminModalActions, AdminUserChip, PublicSiteButton } from './adminUi'
+import {
+  AdminButton,
+  AdminDialog,
+  AdminModalActions,
+  AdminUserChip,
+  PublicSiteButton,
+} from './adminUi'
 import {
   LayoutDashboard,
   BookOpen,
@@ -24,6 +30,7 @@ import {
   ShieldCheck,
   Loader2,
   Menu,
+  LogOut,
 } from "lucide-react";
 import { ADMIN_FONT, adminTheme } from './adminTheme'
 import { useAuthStore } from '../../store/authStore'
@@ -827,6 +834,7 @@ function Sidebar({
   bookCount,
   mobileOpen,
   onClose,
+  onLogout,
 }: {
   active: NavId
   onNav: (id: NavId) => void
@@ -835,6 +843,7 @@ function Sidebar({
   bookCount: number
   mobileOpen: boolean
   onClose: () => void
+  onLogout: () => void
 }) {
   const initial = userName.charAt(0).toUpperCase()
   return (
@@ -912,6 +921,15 @@ function Sidebar({
             <div className="truncate text-xs font-semibold text-[#F5D9A0]">{userName}</div>
             <div className="truncate text-[10px] text-[#9B6B4A]">{userRole}</div>
           </div>
+          <button
+            type="button"
+            onClick={onLogout}
+            title="Log out"
+            aria-label="Log out"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border-none bg-transparent text-[#C4A875] transition hover:bg-white/10 hover:text-[#F5D9A0]"
+          >
+            <LogOut size={15} aria-hidden />
+          </button>
         </div>
       </aside>
     </>
@@ -932,12 +950,16 @@ function PageHeader({
   view,
   userName,
   userRole,
+  userEmail,
   onOpenMenu,
+  onLogout,
 }: {
   view: AdminView
   userName: string
   userRole: string
+  userEmail?: string
   onOpenMenu: () => void
+  onLogout: () => void
 }) {
   return (
     <header
@@ -967,7 +989,7 @@ function PageHeader({
         </div>
       </div>
       <div className="flex shrink-0 flex-wrap items-center gap-2 sm:gap-3">
-        <AdminUserChip name={userName} role={userRole} />
+        <AdminUserChip name={userName} role={userRole} email={userEmail} onLogout={onLogout} />
       </div>
     </header>
   );
@@ -977,6 +999,10 @@ function PageHeader({
 
 export default function AdminPanel() {
   const authUser = useAuthStore((s) => s.user);
+  const logout = useAuthStore((s) => s.logout);
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const [logoutOpen, setLogoutOpen] = useState(false);
   const canManageAdmins = canManageAdminRoles(authUser);
   const displayName = authUser?.name ?? "Admin";
   const roleLabel = adminRoleLabel(authUser);
@@ -1010,6 +1036,13 @@ export default function AdminPanel() {
     setEditingBook(null);
   };
 
+  const handleConfirmLogout = () => {
+    setLogoutOpen(false);
+    logout();
+    queryClient.clear();
+    navigate("/login", { replace: true });
+  };
+
   if (!authUser) {
     return <Navigate to="/login" replace state={{ from: "/admin", requiresAdmin: true }} />;
   }
@@ -1026,6 +1059,10 @@ export default function AdminPanel() {
         bookCount={bookCount}
         mobileOpen={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
+        onLogout={() => {
+          setSidebarOpen(false);
+          setLogoutOpen(true);
+        }}
       />
 
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
@@ -1034,7 +1071,9 @@ export default function AdminPanel() {
             view={view}
             userName={displayName}
             userRole={roleLabel}
+            userEmail={authUser.email}
             onOpenMenu={() => setSidebarOpen(true)}
+            onLogout={() => setLogoutOpen(true)}
           />
         )}
 
@@ -1044,6 +1083,17 @@ export default function AdminPanel() {
         {view === "users"      && <UsersView canManageAdmins={canManageAdmins} />}
         {view === "genresTags" && <GenresAndTagsView />}
       </div>
+
+      <AdminDialog open={logoutOpen} title="Sign out?" onClose={() => setLogoutOpen(false)} maxWidth={400}>
+        <p style={{ margin: "0 0 20px", fontSize: 13, color: "#4B5563", lineHeight: 1.55 }}>
+          You will need to sign in again to manage the library.
+        </p>
+        <AdminModalActions
+          onCancel={() => setLogoutOpen(false)}
+          onConfirm={handleConfirmLogout}
+          confirmLabel="Yes, sign out"
+        />
+      </AdminDialog>
     </div>
   );
 }

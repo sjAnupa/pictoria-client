@@ -195,7 +195,7 @@ export default function BookDetail() {
       requireSignIn()
       return
     }
-    toggleLike.mutate()
+    toggleLike.toggle()
   }
 
   const handleToggleSave = () => {
@@ -204,7 +204,7 @@ export default function BookDetail() {
       requireSignIn()
       return
     }
-    toggleSave.mutate()
+    toggleSave.toggle()
   }
 
   const handleOpenRatingModal = () => {
@@ -397,7 +397,6 @@ export default function BookDetail() {
               <button
                 type="button"
                 onClick={handleToggleLike}
-                disabled={toggleLike.isPending}
                 aria-pressed={liked}
                 style={{
                   flex: 1,
@@ -424,7 +423,6 @@ export default function BookDetail() {
               <button
                 type="button"
                 onClick={handleToggleSave}
-                disabled={toggleSave.isPending}
                 aria-pressed={bookmarked}
                 style={{
                   flex: 1,
