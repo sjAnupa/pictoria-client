@@ -2,6 +2,7 @@ import axios from 'axios'
 import api from './api'
 import type { ApiSuccess } from '../types/api.types'
 import type { ApiBookRecord } from '../types/book.types'
+import { mapWithConcurrency } from '../utils/mapWithConcurrency'
 
 export type CatalogStats = {
   bookCount: number
@@ -32,6 +33,7 @@ export type AdminDashboardStats = {
 export type PageManifestEntry =
   | { type: 'existing'; url: string; displayName?: string }
   | { type: 'new'; fileIndex: number; displayName?: string }
+  | { type: 'uploaded'; url: string; displayName?: string }
 
 export type AdminChapterRecord = {
   _id: string
@@ -189,6 +191,55 @@ export async function updateAdminChapter(
   }
   pageFiles?.forEach((file) => fd.append('pages', file))
   await api.put(`/chapters/${chapterId}`, fd)
+}
+
+/** Per-request caps keep uploads well under proxy body-size and timeout limits. */
+const PAGE_BATCH_MAX_FILES = 20
+const PAGE_BATCH_MAX_BYTES = 40 * 1024 * 1024
+const PAGE_BATCH_CONCURRENCY = 2
+
+function splitIntoBatches(files: File[]): File[][] {
+  const batches: File[][] = []
+  let current: File[] = []
+  let bytes = 0
+  for (const file of files) {
+    if (current.length > 0 && (current.length >= PAGE_BATCH_MAX_FILES || bytes + file.size > PAGE_BATCH_MAX_BYTES)) {
+      batches.push(current)
+      current = []
+      bytes = 0
+    }
+    current.push(file)
+    bytes += file.size
+  }
+  if (current.length > 0) batches.push(current)
+  return batches
+}
+
+/**
+ * Upload chapter page images in small parallel batches (large books stay fast
+ * and never hit request-size limits). Returns stored URLs in input order.
+ */
+export async function uploadChapterPageFiles(
+  bookId: string,
+  chapterNumber: number,
+  files: File[],
+  onUploaded?: (count: number) => void,
+): Promise<Array<{ url: string; displayName: string }>> {
+  if (files.length === 0) return []
+  const batches = splitIntoBatches(files)
+  const results = await mapWithConcurrency(batches, PAGE_BATCH_CONCURRENCY, async (batch) => {
+    const fd = new FormData()
+    fd.append('bookId', bookId)
+    fd.append('chapterNumber', String(chapterNumber))
+    batch.forEach((file) => fd.append('pages', file))
+    const { data } = await api.post<ApiSuccess<Array<{ url: string; displayName: string }>>>(
+      '/chapters/pages/upload',
+      fd,
+    )
+    onUploaded?.(batch.length)
+    return data.data
+  })
+  return results.flat()
 }
 
 export async function deleteAdminChapter(chapterId: string): Promise<void> {

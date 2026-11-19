@@ -31,15 +31,17 @@ import { fetchCategories } from '../../../services/categoryService'
 import {
   adminBookErrorMessage,
   createAdminBook,
-  buildPageManifest,
   createAdminChapter,
   deleteAdminChapter,
   fetchBookForEdit,
   updateAdminBook,
   updateAdminChapter,
+  uploadChapterPageFiles,
   type AdminBookEditRecord,
   type AdminChapterRecord,
+  type PageManifestEntry,
 } from '../../../services/adminBookService'
+import { mapWithConcurrency } from '../../../utils/mapWithConcurrency'
 import { adminStatusToApi, type AdminBookRow } from '../../../utils/mapAdminBook'
 import { adminTheme, ADMIN_FONT } from '../adminTheme'
 import { resolveMediaUrl } from '../../../utils/resolveMediaUrl'
@@ -283,6 +285,66 @@ function snapshotForm(form: BookFormState, coverFile: File | null, coverPreview:
   return JSON.stringify({ ...form, coverFile: coverFile?.name ?? null, coverPreview })
 }
 
+/** Book-level fields only (no chapters) — decides whether the book PUT is needed. */
+function bookFieldsSignature(form: BookFormState): string {
+  const { chapters: _chapters, ...fields } = form
+  return JSON.stringify(fields)
+}
+
+/** Identity of a chapter's saved state — unchanged chapters are not re-sent. */
+function chapterSignature(chapter: FormChapter): string {
+  return JSON.stringify({
+    title: chapter.title.trim(),
+    number: chapter.number,
+    pages: chapter.pages.map((p) => (p.kind === 'remote' ? ['r', p.remoteUrl, p.name] : ['l', p.id])),
+  })
+}
+
+type SaveBaseline = {
+  book: string
+  chapters: Map<string, string>
+  numbers: Map<string, number>
+}
+
+function baselineFromForm(form: BookFormState): SaveBaseline {
+  const chapters = new Map<string, string>()
+  const numbers = new Map<string, number>()
+  for (const chapter of form.chapters) {
+    if (!chapter.serverId) continue
+    chapters.set(chapter.serverId, chapterSignature(chapter))
+    numbers.set(chapter.serverId, chapter.number)
+  }
+  return { book: bookFieldsSignature(form), chapters, numbers }
+}
+
+/** Pre-upload new page files, then describe the chapter purely by stored URLs. */
+async function buildUploadedManifest(
+  bookId: string,
+  chapter: FormChapter,
+  onUploaded: (count: number) => void,
+): Promise<PageManifestEntry[]> {
+  const localPages = chapter.pages.filter((p) => p.kind !== 'remote' || !p.remoteUrl)
+  const uploaded = await uploadChapterPageFiles(
+    bookId,
+    chapter.number,
+    localPages.map((p) => {
+      if (!p.file) throw new Error('Invalid chapter page entry')
+      return p.file
+    }),
+    onUploaded,
+  )
+  const uploadedById = new Map(localPages.map((p, i) => [p.id, uploaded[i]]))
+
+  return chapter.pages.map((page): PageManifestEntry => {
+    if (page.kind === 'remote' && page.remoteUrl) {
+      return { type: 'existing', url: page.remoteUrl, displayName: page.name }
+    }
+    const stored = uploadedById.get(page.id)
+    if (!stored) throw new Error('Page upload did not complete')
+    return { type: 'uploaded', url: stored.url, displayName: page.name || stored.displayName }
+  })
+}
+
 function validateDraftForm(
   form: BookFormState,
   coverFile: File | null,
@@ -345,6 +407,8 @@ export default function BookFormView({ editingBook, onBack }: BookFormViewProps)
   const [removedChapterIds, setRemovedChapterIds] = useState<string[]>([])
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
   const [saving, setSaving] = useState(false)
+  const [saveProgress, setSaveProgress] = useState<string | null>(null)
+  const baselineRef = useRef<SaveBaseline | null>(null)
   const [chapterToDelete, setChapterToDelete] = useState<string | null>(null)
   const [toast, setToast] = useState<AdminToastState | null>(null)
   const toastId = useRef(0)
@@ -383,6 +447,7 @@ export default function BookFormView({ editingBook, onBack }: BookFormViewProps)
     setCoverFile(null)
     setRemovedChapterIds([])
     setExpandedChapterId(next.chapters[0]?.id ?? null)
+    baselineRef.current = baselineFromForm(next)
     setInitialSnapshot(snapshotForm(next, null, resolveMediaUrl(editRecord.coverImageUrl)))
   }, [editRecord])
 
@@ -457,49 +522,76 @@ export default function BookFormView({ editingBook, onBack }: BookFormViewProps)
       }
 
       let bookId = editingBook?.id ?? ''
+      const baseline = isEdit ? baselineRef.current : null
+      const bookChanged = !baseline || Boolean(coverFile) || bookFieldsSignature(form) !== baseline.book
 
-      if (isEdit) {
-        const updated = await updateAdminBook(bookId, payload)
-        bookId = String(updated._id)
-      } else {
+      if (!isEdit) {
+        setSaveProgress('Saving book…')
         const created = await createAdminBook(payload)
         bookId = String(created._id)
+      } else if (bookChanged) {
+        setSaveProgress('Saving book…')
+        const updated = await updateAdminBook(bookId, payload)
+        bookId = String(updated._id)
       }
 
-      for (const chapterId of removedChapterIds) {
-        await deleteAdminChapter(chapterId)
+      if (removedChapterIds.length > 0) {
+        await Promise.all(removedChapterIds.map((chapterId) => deleteAdminChapter(chapterId)))
       }
 
-      for (const chapter of form.chapters) {
+      const changedChapters = form.chapters.filter((chapter) => {
+        if (!chapter.serverId) return chapter.pages.length > 0
+        return baseline?.chapters.get(chapter.serverId) !== chapterSignature(chapter)
+      })
+
+      const totalNewPages = changedChapters.reduce(
+        (sum, ch) => sum + ch.pages.filter((p) => p.kind !== 'remote' || !p.remoteUrl).length,
+        0,
+      )
+      let uploadedPages = 0
+      const reportUpload = (count: number) => {
+        uploadedPages += count
+        setSaveProgress(`Uploading pages ${uploadedPages}/${totalNewPages}…`)
+      }
+      if (totalNewPages > 0) reportUpload(0)
+
+      const saveChapter = async (chapter: FormChapter) => {
         const chapterTitle = chapter.title.trim() || `Chapter ${chapter.number}`
+        const manifest = await buildUploadedManifest(bookId, chapter, reportUpload)
 
         if (chapter.serverId) {
-          const { manifest, files } = buildPageManifest(chapter.pages)
-          await updateAdminChapter(
-            chapter.serverId,
-            {
-              title: chapterTitle,
-              chapterNumber: chapter.number,
-              pageManifest: manifest,
-            },
-            files,
-          )
-          continue
+          await updateAdminChapter(chapter.serverId, {
+            title: chapterTitle,
+            chapterNumber: chapter.number,
+            pageManifest: manifest,
+          })
+        } else if (manifest.length > 0) {
+          await createAdminChapter(bookId, chapter.number, chapterTitle, manifest, [])
         }
-
-        if (chapter.pages.length === 0) continue
-
-        const { manifest, files } = buildPageManifest(chapter.pages)
-        if (files.length === 0 && manifest.length === 0) continue
-
-        await createAdminChapter(bookId, chapter.number, chapterTitle, manifest, files)
       }
 
-      await queryClient.invalidateQueries({ queryKey: ['admin', 'books'] })
-      await queryClient.invalidateQueries({ queryKey: ['admin', 'dashboard'] })
-      await queryClient.invalidateQueries({ queryKey: ['books'] })
-      await queryClient.invalidateQueries({ queryKey: ['admin', 'book-edit', bookId] })
+      // Chapter numbers are unique per book: renumbered chapters go first, in
+      // ascending order, so a number is always freed before it is reused.
+      const renumbered = changedChapters
+        .filter((ch) => ch.serverId && baseline?.numbers.get(ch.serverId) !== ch.number)
+        .sort((a, b) => a.number - b.number)
+      for (const chapter of renumbered) {
+        await saveChapter(chapter)
+      }
+      await mapWithConcurrency(
+        changedChapters.filter((ch) => !renumbered.includes(ch)),
+        3,
+        saveChapter,
+      )
 
+      if (bookChanged || changedChapters.length > 0 || removedChapterIds.length > 0) {
+        void queryClient.invalidateQueries({ queryKey: ['admin', 'books'] })
+        void queryClient.invalidateQueries({ queryKey: ['admin', 'dashboard'] })
+        void queryClient.invalidateQueries({ queryKey: ['books'] })
+        void queryClient.invalidateQueries({ queryKey: ['admin', 'book-edit', bookId] })
+      }
+
+      baselineRef.current = baselineFromForm(form)
       setInitialSnapshot(snapshotForm(form, null, coverPreview))
       setCoverFile(null)
       setRemovedChapterIds([])
@@ -509,6 +601,7 @@ export default function BookFormView({ editingBook, onBack }: BookFormViewProps)
       return false
     } finally {
       setSaving(false)
+      setSaveProgress(null)
     }
   }, [
     coverFile,
@@ -629,7 +722,7 @@ export default function BookFormView({ editingBook, onBack }: BookFormViewProps)
           Cancel
         </AdminButton>
         <AdminButton variant="primary" onClick={() => void handleSave()} disabled={saving}>
-          {saving ? 'Saving…' : isEdit ? 'Save changes' : 'Save draft'}
+          {saving ? (saveProgress ?? 'Saving…') : isEdit ? 'Save changes' : 'Save draft'}
         </AdminButton>
       </div>
 
@@ -1055,7 +1148,7 @@ export default function BookFormView({ editingBook, onBack }: BookFormViewProps)
         <AdminModalActions
           onCancel={handleStay}
           onConfirm={() => void handleSaveAndLeave()}
-          confirmLabel={saving ? 'Saving…' : 'Save draft & leave'}
+          confirmLabel={saving ? (saveProgress ?? 'Saving…') : 'Save draft & leave'}
           confirmDisabled={saving}
         />
         <button
